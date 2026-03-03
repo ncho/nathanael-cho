@@ -13,34 +13,118 @@
       <span>Los Angeles, CA</span>
     </h1>
   </header>
-  <!-- <hr> -->
   <main>
-    <!--
-    <div class="projects">
-
-      <div class="project">
-        <a href="#">Project One</a>
-        <span class="year">2026</span>
-      </div>
-
-      <div class="project">
-        <a href="#">Project Two</a>
-        <span class="year">2025</span>
-      </div>
-
-      <div class="project">
-        <a href="#">Project Three</a>
-        <span class="year">2024</span>
-      </div>
-
-    </div>
-    -->
-    
-    <!-- <div class="placeholder"></div> -->
-
+    <canvas id="topoMap"></canvas>
   </main>
   <footer>
     &copy; 2026
   </footer>
+  
+  <script>
+    function generateTopoMap() {
+      const canvas = document.getElementById('topoMap');
+      if (!canvas) return;
+      
+      const ctx = canvas.getContext('2d');
+      const main = canvas.parentElement;
+      
+      const width = main.clientWidth;
+      const height = main.clientHeight;
+      
+      canvas.width = width;
+      canvas.height = height;
+      
+      const numPeaks = 5;
+      const peaks = [];
+      
+      for (let i = 0; i < numPeaks; i++) {
+        peaks.push({
+          x: Math.random() * width,
+          y: Math.random() * height,
+          strength: Math.random() * 0.5 + 0.5
+        });
+      }
+      
+      function getElevation(x, y) {
+        let elevation = 0;
+        
+        peaks.forEach(peak => {
+          const dx = x - peak.x;
+          const dy = y - peak.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          const influence = peak.strength * Math.exp(-dist / 100);
+          elevation += influence;
+        });
+        
+        return elevation;
+      }
+      
+      ctx.strokeStyle = '#000000';
+      ctx.lineWidth = 0.5;
+      
+      const contourLevels = 15;
+      const gridSize = 8;
+      
+      for (let level = 0; level < contourLevels; level++) {
+        const targetElevation = level * 0.08;
+        
+        for (let y = 0; y < height - gridSize; y += gridSize) {
+          for (let x = 0; x < width - gridSize; x += gridSize) {
+            const elevations = [
+              getElevation(x, y),
+              getElevation(x + gridSize, y),
+              getElevation(x + gridSize, y + gridSize),
+              getElevation(x, y + gridSize)
+            ];
+            
+            const min = Math.min(...elevations);
+            const max = Math.max(...elevations);
+            
+            if (targetElevation >= min && targetElevation <= max) {
+              const points = [];
+              
+              for (let i = 0; i < 4; i++) {
+                const next = (i + 1) % 4;
+                const e1 = elevations[i];
+                const e2 = elevations[next];
+                
+                if ((e1 <= targetElevation && e2 >= targetElevation) ||
+                    (e1 >= targetElevation && e2 <= targetElevation)) {
+                  const t = (targetElevation - e1) / (e2 - e1);
+                  
+                  let px, py;
+                  if (i === 0) {
+                    px = x + t * gridSize;
+                    py = y;
+                  } else if (i === 1) {
+                    px = x + gridSize;
+                    py = y + t * gridSize;
+                  } else if (i === 2) {
+                    px = x + (1 - t) * gridSize;
+                    py = y + gridSize;
+                  } else {
+                    px = x;
+                    py = y + (1 - t) * gridSize;
+                  }
+                  
+                  points.push({ x: px, y: py });
+                }
+              }
+              
+              if (points.length >= 2) {
+                ctx.beginPath();
+                ctx.moveTo(points[0].x, points[0].y);
+                ctx.lineTo(points[1].x, points[1].y);
+                ctx.stroke();
+              }
+            }
+          }
+        }
+      }
+    }
+    
+    window.addEventListener('load', generateTopoMap);
+    window.addEventListener('resize', generateTopoMap);
+  </script>
 </body>
 </html>
