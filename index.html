@@ -40,27 +40,62 @@ function generateTopoMap() {
 
   ctx.clearRect(0, 0, width, height);
 
-  // Random seed for line variation
-  const seed = Math.random() * 1000;
+  // Random seed for variation
+  const seedX = Math.random() * 1000;
+  const seedY = Math.random() * 1000;
 
-  function noise(x) {
-    return Math.sin(x * 0.02 + seed) * 10 + Math.sin(x * 0.05 + seed*2) * 5;
+  // Noise for terrain
+  function noise(x, y) {
+    x += seedX; y += seedY;
+    return (
+      Math.sin(x*0.01) + Math.sin(y*0.01) + Math.sin((x+y)*0.008) + Math.sin(Math.sqrt(x*x+y*y)*0.02)
+    ) * 0.25;
   }
 
-  const lines = 28;
-  const spacing = height / lines;
+  // Terrain elevation function
+  function getElevation(x, y) {
+    let e = 0;
+
+    // Coastal slope: west low, east high
+    e += (x / width) * 1.2;
+
+    // Santa Monica Mountains NW-SE ridge
+    e += Math.sin((x*0.006) + (y*0.006)) * 1.0;
+
+    // San Fernando Valley basin flattening
+    const valleyCenterX = width*0.45;
+    const valleyCenterY = height*0.55;
+    const dx = (x - valleyCenterX)/(width*0.35);
+    const dy = (y - valleyCenterY)/(height*0.35);
+    e -= Math.exp(-(dx*dx + dy*dy)) * 1.5;
+
+    // Layered micro-noise for terrain detail
+    e += noise(x, y) + 0.5*noise(x*2, y*2) + 0.25*noise(x*4, y*4);
+
+    return e;
+  }
+
+  // Draw contour lines
+  const contourLevels = 28;
+  const gridSize = 5;
 
   ctx.strokeStyle = 'rgba(0,0,0,0.65)';
 
-  for (let i = 0; i < lines; i++) {
-    const yBase = i * spacing;
-    ctx.beginPath();
-    ctx.lineWidth = (i % 5 === 0) ? 1.4 : 0.7;
+  for (let level=0; level<contourLevels; level++) {
+    const threshold = -1.5 + (level/contourLevels) * 4;
 
-    for (let x = 0; x <= width; x += 2) {
-      const y = yBase + noise(x);
-      if (x === 0) ctx.moveTo(x, y);
-      else ctx.lineTo(x, y);
+    ctx.beginPath();
+    ctx.lineWidth = (level % 5 === 0) ? 1.4 : 0.7;
+
+    for (let y = 0; y < height; y += gridSize) {
+      ctx.moveTo(0, y);
+      for (let x = 0; x <= width; x += 2) {
+        // Elevation at this point
+        const e = getElevation(x, y);
+        // Map to vertical offset: lines dip for hills, rise for valleys
+        const yOffset = y - (e * 15); 
+        ctx.lineTo(x, yOffset);
+      }
     }
     ctx.stroke();
   }
