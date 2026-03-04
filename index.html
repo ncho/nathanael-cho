@@ -5,42 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Nathanael Cho</title>
   <link rel="stylesheet" href="styles.css">
-  <style>
-    body, html {
-      margin: 0;
-      padding: 0;
-      height: 100%;
-      font-family: sans-serif;
-    }
-    header {
-      text-align: center;
-      padding: 1rem;
-      background: #f0f0f0;
-    }
-    header h1 {
-      margin: 0;
-      font-size: 2rem;
-    }
-    header span {
-      display: block;
-      font-size: 1rem;
-      color: #555;
-    }
-    main {
-      position: relative;
-      width: 100%;
-      height: calc(100% - 120px);
-      overflow: hidden;
-    }
-    footer {
-      text-align: center;
-      padding: 1rem;
-      background: #f0f0f0;
-    }
-    canvas {
-      display: block;
-    }
-  </style>
 </head>
 <body>
   <header>
@@ -76,86 +40,30 @@ function generateTopoMap() {
 
   ctx.clearRect(0, 0, width, height);
 
-  // Random seed for terrain variation
-  const seedX = Math.random() * 1000;
-  const seedY = Math.random() * 1000;
+  // Random seed for line variation
+  const seed = Math.random() * 1000;
 
-  function noise(x, y) {
-    x += seedX;
-    y += seedY;
-    return (
-      Math.sin(x * 0.01) +
-      Math.sin(y * 0.01) +
-      Math.sin((x + y) * 0.008) +
-      Math.sin(Math.sqrt(x*x + y*y) * 0.02)
-    ) * 0.25;
+  function noise(x) {
+    return Math.sin(x * 0.02 + seed) * 10 + Math.sin(x * 0.05 + seed*2) * 5;
   }
 
-  function getElevation(x, y) {
-    let e = 0;
+  const lines = 28;
+  const spacing = height / lines;
 
-    // Coastal slope (west low, east high)
-    e += (x / width) * 1.2;
+  ctx.strokeStyle = 'rgba(0,0,0,0.65)';
 
-    // Santa Monica Mountains (NW-SE diagonal ridges)
-    const ridge = Math.sin((x * 0.006) + (y * 0.006));
-    e += ridge * 1.0;
+  for (let i = 0; i < lines; i++) {
+    const yBase = i * spacing;
+    ctx.beginPath();
+    ctx.lineWidth = (i % 5 === 0) ? 1.4 : 0.7;
 
-    // San Fernando Valley basin (central flattening)
-    const valleyCenterX = width * 0.45;
-    const valleyCenterY = height * 0.55;
-    const dx = (x - valleyCenterX) / (width * 0.35);
-    const dy = (y - valleyCenterY) / (height * 0.35);
-    e -= Math.exp(-(dx*dx + dy*dy)) * 1.5;
-
-    // Layered terrain detail
-    e += noise(x, y);
-    e += 0.5 * noise(x*2, y*2);
-    e += 0.25 * noise(x*4, y*4);
-
-    return e;
-  }
-
-  function drawContours() {
-    const contourLevels = 28;
-    const gridSize = 5;
-
-    for (let level = 0; level < contourLevels; level++) {
-      const threshold = -1.5 + (level / contourLevels) * 4;
-
-      ctx.beginPath();
-      ctx.strokeStyle = `rgba(0,0,0,${0.3 + level*0.02})`;
-      ctx.lineWidth = (level % 5 === 0) ? 1.4 : 0.7;
-
-      for (let y = 0; y < height - gridSize; y += gridSize) {
-        for (let x = 0; x < width - gridSize; x += gridSize) {
-
-          // sample corners
-          const v = [
-            getElevation(x, y),
-            getElevation(x + gridSize, y),
-            getElevation(x + gridSize, y + gridSize),
-            getElevation(x, y + gridSize)
-          ];
-
-          const min = Math.min(...v);
-          const max = Math.max(...v);
-
-          if (threshold >= min && threshold <= max) {
-            // Draw small contour segment
-            ctx.moveTo(x, y);
-            if (v[0] < threshold) ctx.lineTo(x + gridSize, y);
-            if (v[1] < threshold) ctx.lineTo(x + gridSize, y + gridSize);
-            if (v[2] < threshold) ctx.lineTo(x, y + gridSize);
-            ctx.lineTo(x, y);
-          }
-        }
-      }
-      ctx.stroke();
+    for (let x = 0; x <= width; x += 2) {
+      const y = yBase + noise(x);
+      if (x === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
     }
+    ctx.stroke();
   }
-
-  drawContours();
 }
 
 window.addEventListener('load', generateTopoMap);
