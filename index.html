@@ -21,127 +21,141 @@
   </footer>
   
 <script>
-  function generateTopoMap() {
-    const canvas = document.getElementById('topoMap');
-    if (!canvas) return;
+function generateTopoMap() {
+  const canvas = document.getElementById('topoMap');
+  if (!canvas) return;
 
-    const ctx = canvas.getContext('2d');
-    const main = canvas.parentElement;
+  const ctx = canvas.getContext('2d');
+  const main = canvas.parentElement;
 
-    const width = main.clientWidth;
-    const height = main.clientHeight;
+  const width = main.clientWidth;
+  const height = main.clientHeight;
 
-    // High DPI scaling (Retina-safe)
-    const dpr = window.devicePixelRatio || 1;
-    canvas.width = width * dpr;
-    canvas.height = height * dpr;
-    canvas.style.width = width + 'px';
-    canvas.style.height = height + 'px';
-    ctx.scale(dpr, dpr);
+  // Retina scaling
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = width * dpr;
+  canvas.height = height * dpr;
+  canvas.style.width = width + 'px';
+  canvas.style.height = height + 'px';
+  ctx.scale(dpr, dpr);
 
-    ctx.clearRect(0, 0, width, height);
+  ctx.clearRect(0, 0, width, height);
 
-    // Terrain noise
-    function noise(x, y) {
-      return (
-        Math.sin(x * 0.01) +
-        Math.sin(y * 0.01) +
-        Math.sin((x + y) * 0.008) +
-        Math.sin(Math.sqrt(x * x + y * y) * 0.02)
-      ) * 0.25;
-    }
+  // Random seed so terrain changes on page refresh
+  const seedX = Math.random() * 1000;
+  const seedY = Math.random() * 1000;
 
-    function getElevation(x, y) {
-      let e = 0;
+  function noise(x, y) {
+    x += seedX;
+    y += seedY;
 
-      e += noise(x, y);                // large scale
-      e += 0.5 * noise(x * 2, y * 2);  // medium detail
-      e += 0.25 * noise(x * 4, y * 4); // fine detail
+    return (
+      Math.sin(x * 0.01) +
+      Math.sin(y * 0.01) +
+      Math.sin((x + y) * 0.008) +
+      Math.sin(Math.sqrt(x * x + y * y) * 0.02)
+    ) * 0.25;
+  }
 
-      // subtle edge falloff (framing effect)
-      const dx = (x - width / 2) / (width / 2);
-      const dy = (y - height / 2) / (height / 2);
-      const distanceFromCenter = Math.sqrt(dx * dx + dy * dy);
-      e -= distanceFromCenter * 0.8;
+  function getElevation(x, y) {
+    let e = 0;
 
-      return e;
-    }
+    // --- Coastal slope (west lower, east higher)
+    e += (x / width) * 1.2;
 
-    ctx.strokeStyle = 'rgba(0,0,0,0.65)';
+    // --- Santa Monica Mountains ridge band (NW-SE diagonal)
+    const ridge = Math.sin((x * 0.006) + (y * 0.006));
+    e += ridge * 1.0;
 
-    const contourLevels = 30;
-    const gridSize = 4;
+    // --- San Fernando Valley basin (central flattening)
+    const valleyCenterX = width * 0.45;
+    const valleyCenterY = height * 0.55;
+    const dx = (x - valleyCenterX) / (width * 0.35);
+    const dy = (y - valleyCenterY) / (height * 0.35);
+    const basin = Math.exp(-(dx * dx + dy * dy));
+    e -= basin * 1.5;
 
-    for (let level = 0; level < contourLevels; level++) {
+    // --- Layered terrain detail
+    e += noise(x, y);
+    e += 0.5 * noise(x * 2, y * 2);
+    e += 0.25 * noise(x * 4, y * 4);
 
-      // Major vs minor contours
-      ctx.lineWidth = (level % 5 === 0) ? 1.4 : 0.7;
+    return e;
+  }
 
-      // Spread contour levels evenly across elevation range
-      const targetElevation = -1 + (level / contourLevels) * 2;
+  ctx.strokeStyle = 'rgba(0,0,0,0.65)';
 
-      for (let y = 0; y < height - gridSize; y += gridSize) {
-        for (let x = 0; x < width - gridSize; x += gridSize) {
+  const contourLevels = 28;
+  const gridSize = 5;
+
+  // --- Marching Squares (connected contour tracing)
+  for (let level = 0; level < contourLevels; level++) {
+
+    ctx.lineWidth = (level % 5 === 0) ? 1.4 : 0.7;
+
+    const threshold = -1.5 + (level / contourLevels) * 4;
+
+    const visited = new Set();
+
+    for (let y = 0; y < height - gridSize; y += gridSize) {
+      for (let x = 0; x < width - gridSize; x += gridSize) {
+
+        const key = `${x},${y},${level}`;
+        if (visited.has(key)) continue;
+
+        const values = [
+          getElevation(x, y),
+          getElevation(x + gridSize, y),
+          getElevation(x + gridSize, y + gridSize),
+          getElevation(x, y + gridSize)
+        ];
+
+        const min = Math.min(...values);
+        const max = Math.max(...values);
+
+        if (threshold < min || threshold > max) continue;
+
+        ctx.beginPath();
+
+        let startX = x;
+        let startY = y;
+
+        let currentX = startX;
+        let currentY = startY;
+
+        let safety = 0;
+
+        while (safety < 10000) {
+          safety++;
 
           const elevations = [
-            getElevation(x, y),
-            getElevation(x + gridSize, y),
-            getElevation(x + gridSize, y + gridSize),
-            getElevation(x, y + gridSize)
+            getElevation(currentX, currentY),
+            getElevation(currentX + gridSize, currentY),
+            getElevation(currentX + gridSize, currentY + gridSize),
+            getElevation(currentX, currentY + gridSize)
           ];
 
-          const min = Math.min(...elevations);
-          const max = Math.max(...elevations);
+          const localMin = Math.min(...elevations);
+          const localMax = Math.max(...elevations);
 
-          if (targetElevation >= min && targetElevation <= max) {
-
-            const points = [];
-
-            for (let i = 0; i < 4; i++) {
-              const next = (i + 1) % 4;
-              const e1 = elevations[i];
-              const e2 = elevations[next];
-
-              if (
-                (e1 <= targetElevation && e2 >= targetElevation) ||
-                (e1 >= targetElevation && e2 <= targetElevation)
-              ) {
-                const t = (targetElevation - e1) / (e2 - e1);
-
-                let px, py;
-
-                if (i === 0) {
-                  px = x + t * gridSize;
-                  py = y;
-                } else if (i === 1) {
-                  px = x + gridSize;
-                  py = y + t * gridSize;
-                } else if (i === 2) {
-                  px = x + (1 - t) * gridSize;
-                  py = y + gridSize;
-                } else {
-                  px = x;
-                  py = y + (1 - t) * gridSize;
-                }
-
-                points.push({ x: px, y: py });
-              }
-            }
-
-            if (points.length >= 2) {
-              ctx.beginPath();
-              ctx.moveTo(points[0].x, points[0].y);
-              ctx.lineTo(points[1].x, points[1].y);
-              ctx.stroke();
-            }
+          if (threshold >= localMin && threshold <= localMax) {
+            ctx.lineTo(currentX, currentY);
+            visited.add(`${currentX},${currentY},${level}`);
           }
+
+          currentX += gridSize;
+
+          if (currentX >= width) break;
         }
+
+        ctx.stroke();
       }
     }
   }
+}
 
-  window.addEventListener('load', generateTopoMap);
-  window.addEventListener('resize', generateTopoMap);
+window.addEventListener('load', generateTopoMap);
+window.addEventListener('resize', generateTopoMap);
 </script>
 </body>
 </html>
