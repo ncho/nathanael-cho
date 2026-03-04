@@ -60,6 +60,14 @@
       }
       
       ctx.strokeStyle = '#000000';
+
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = width * dpr;
+      canvas.height = height * dpr;
+      canvas.style.width = width + 'px';
+      canvas.style.height = height + 'px';
+      ctx.scale(dpr, dpr);
+      
       ctx.lineWidth = 1;
       
       const contourLevels = 15;
