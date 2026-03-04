@@ -20,119 +20,128 @@
     &copy; 2026
   </footer>
   
-  <script>
-    function generateTopoMap() {
-      const canvas = document.getElementById('topoMap');
-      if (!canvas) return;
-      
-      const ctx = canvas.getContext('2d');
-      const main = canvas.parentElement;
-      
-      const width = main.clientWidth;
-      const height = main.clientHeight;
-      
-      canvas.width = width;
-      canvas.height = height;
-      
-      const numPeaks = 5;
-      const peaks = [];
-      
-      for (let i = 0; i < numPeaks; i++) {
-        peaks.push({
-          x: Math.random() * width,
-          y: Math.random() * height,
-          strength: Math.random() * 0.5 + 0.5
-        });
-      }
-      
-      function getElevation(x, y) {
-        let elevation = 0;
-        
-        peaks.forEach(peak => {
-          const dx = x - peak.x;
-          const dy = y - peak.y;
-          const dist = Math.sqrt(dx * dx + dy * dy);
-          const influence = peak.strength * Math.exp(-dist / 100);
-          elevation += influence;
-        });
-        
-        return elevation;
-      }
-      
-      ctx.strokeStyle = '#000000';
+<script>
+  function generateTopoMap() {
+    const canvas = document.getElementById('topoMap');
+    if (!canvas) return;
 
-      const dpr = window.devicePixelRatio || 1;
-      canvas.width = width * dpr;
-      canvas.height = height * dpr;
-      canvas.style.width = width + 'px';
-      canvas.style.height = height + 'px';
-      ctx.scale(dpr, dpr);
-      
-      ctx.lineWidth = 1;
-      
-      const contourLevels = 15;
-      const gridSize = 8;
-      
-      for (let level = 0; level < contourLevels; level++) {
-        const targetElevation = level * 0.08;
-        
-        for (let y = 0; y < height - gridSize; y += gridSize) {
-          for (let x = 0; x < width - gridSize; x += gridSize) {
-            const elevations = [
-              getElevation(x, y),
-              getElevation(x + gridSize, y),
-              getElevation(x + gridSize, y + gridSize),
-              getElevation(x, y + gridSize)
-            ];
-            
-            const min = Math.min(...elevations);
-            const max = Math.max(...elevations);
-            
-            if (targetElevation >= min && targetElevation <= max) {
-              const points = [];
-              
-              for (let i = 0; i < 4; i++) {
-                const next = (i + 1) % 4;
-                const e1 = elevations[i];
-                const e2 = elevations[next];
-                
-                if ((e1 <= targetElevation && e2 >= targetElevation) ||
-                    (e1 >= targetElevation && e2 <= targetElevation)) {
-                  const t = (targetElevation - e1) / (e2 - e1);
-                  
-                  let px, py;
-                  if (i === 0) {
-                    px = x + t * gridSize;
-                    py = y;
-                  } else if (i === 1) {
-                    px = x + gridSize;
-                    py = y + t * gridSize;
-                  } else if (i === 2) {
-                    px = x + (1 - t) * gridSize;
-                    py = y + gridSize;
-                  } else {
-                    px = x;
-                    py = y + (1 - t) * gridSize;
-                  }
-                  
-                  points.push({ x: px, y: py });
+    const ctx = canvas.getContext('2d');
+    const main = canvas.parentElement;
+
+    const width = main.clientWidth;
+    const height = main.clientHeight;
+
+    // High DPI scaling (Retina-safe)
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = width * dpr;
+    canvas.height = height * dpr;
+    canvas.style.width = width + 'px';
+    canvas.style.height = height + 'px';
+    ctx.scale(dpr, dpr);
+
+    ctx.clearRect(0, 0, width, height);
+
+    // Terrain noise
+    function noise(x, y) {
+      return (
+        Math.sin(x * 0.01) +
+        Math.sin(y * 0.01) +
+        Math.sin((x + y) * 0.008) +
+        Math.sin(Math.sqrt(x * x + y * y) * 0.02)
+      ) * 0.25;
+    }
+
+    function getElevation(x, y) {
+      let e = 0;
+
+      e += noise(x, y);                // large scale
+      e += 0.5 * noise(x * 2, y * 2);  // medium detail
+      e += 0.25 * noise(x * 4, y * 4); // fine detail
+
+      // subtle edge falloff (framing effect)
+      const dx = (x - width / 2) / (width / 2);
+      const dy = (y - height / 2) / (height / 2);
+      const distanceFromCenter = Math.sqrt(dx * dx + dy * dy);
+      e -= distanceFromCenter * 0.8;
+
+      return e;
+    }
+
+    ctx.strokeStyle = 'rgba(0,0,0,0.65)';
+
+    const contourLevels = 30;
+    const gridSize = 4;
+
+    for (let level = 0; level < contourLevels; level++) {
+
+      // Major vs minor contours
+      ctx.lineWidth = (level % 5 === 0) ? 1.4 : 0.7;
+
+      // Spread contour levels evenly across elevation range
+      const targetElevation = -1 + (level / contourLevels) * 2;
+
+      for (let y = 0; y < height - gridSize; y += gridSize) {
+        for (let x = 0; x < width - gridSize; x += gridSize) {
+
+          const elevations = [
+            getElevation(x, y),
+            getElevation(x + gridSize, y),
+            getElevation(x + gridSize, y + gridSize),
+            getElevation(x, y + gridSize)
+          ];
+
+          const min = Math.min(...elevations);
+          const max = Math.max(...elevations);
+
+          if (targetElevation >= min && targetElevation <= max) {
+
+            const points = [];
+
+            for (let i = 0; i < 4; i++) {
+              const next = (i + 1) % 4;
+              const e1 = elevations[i];
+              const e2 = elevations[next];
+
+              if (
+                (e1 <= targetElevation && e2 >= targetElevation) ||
+                (e1 >= targetElevation && e2 <= targetElevation)
+              ) {
+                const t = (targetElevation - e1) / (e2 - e1);
+
+                let px, py;
+
+                if (i === 0) {
+                  px = x + t * gridSize;
+                  py = y;
+                } else if (i === 1) {
+                  px = x + gridSize;
+                  py = y + t * gridSize;
+                } else if (i === 2) {
+                  px = x + (1 - t) * gridSize;
+                  py = y + gridSize;
+                } else {
+                  px = x;
+                  py = y + (1 - t) * gridSize;
                 }
+
+                points.push({ x: px, y: py });
               }
-              
-              if (points.length >= 2) {
-                ctx.beginPath();
-                ctx.moveTo(points[0].x, points[0].y);
-                ctx.lineTo(points[1].x, points[1].y);
-                ctx.stroke();
-              }
+            }
+
+            if (points.length >= 2) {
+              ctx.beginPath();
+              ctx.moveTo(points[0].x, points[0].y);
+              ctx.lineTo(points[1].x, points[1].y);
+              ctx.stroke();
             }
           }
         }
       }
     }
-    
-    window.addEventListener('load', generateTopoMap);
-    window.addEventListener('resize', generateTopoMap);
-  </script>
+  }
+
+  window.addEventListener('load', generateTopoMap);
+  window.addEventListener('resize', generateTopoMap);
+</script>
 </body>
 </html>
